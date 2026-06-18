@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoodTrip 每日銷售摘要</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  background: #0f0f0f;
+  color: #e8e8e8;
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+}
+.header { text-align: center; margin-bottom: 32px; }
+.header h1 { font-size: 12px; letter-spacing: .25em; text-transform: uppercase; color: #555; font-weight: 400; margin-bottom: 6px; }
+.brand { font-size: 26px; font-weight: 700; color: #fff; letter-spacing: -.5px; }
+.brand span { color: #fff; }
+
+.card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 22px; max-width: 520px; margin: 0 auto 16px; }
+.card-title { font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: #C8A44A; font-weight: 600; margin-bottom: 16px; }
+
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.field-row.full { grid-template-columns: 1fr; }
+.field label { display: block; font-size: 11px; color: #666; margin-bottom: 5px; }
+.field input, .field select {
+  width: 100%; background: #111; border: 1px solid #2e2e2e;
+  border-radius: 7px; color: #e8e8e8; font-size: 15px;
+  padding: 10px 12px; outline: none; transition: border-color .15s;
+  -webkit-appearance: none;
+}
+.field input:focus, .field select:focus { border-color: #C8A44A; }
+.field input::placeholder { color: #3a3a3a; }
+.field input[type=date] { color-scheme: dark; }
+
+.drop-zone {
+  border: 1.5px dashed #2e2e2e; border-radius: 10px; padding: 28px 16px;
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  position: relative;
+}
+.drop-zone:hover { border-color: #C8A44A; background: rgba(200,164,74,.04); }
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.dz-icon { font-size: 26px; margin-bottom: 8px; }
+.dz-text { font-size: 13px; color: #555; }
+.dz-text strong { color: #C8A44A; }
+.dz-hint { font-size: 11px; color: #3a3a3a; margin-top: 4px; }
+.drop-zone.loaded { border-style: solid; border-color: #2e5e2e; }
+.drop-zone.loaded .dz-text { color: #5db85d; }
+
+.btn-calc {
+  display: block; width: 100%; max-width: 520px; margin: 0 auto 16px;
+  background: #C8A44A; color: #0f0f0f; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; padding: 14px; cursor: pointer; transition: opacity .15s;
+}
+.btn-calc:hover { opacity: .88; }
+.btn-calc:active { opacity: .75; }
+
+.error-box {
+  background: #2a1010; border: 1px solid #5a2020; border-radius: 8px;
+  padding: 12px 16px; font-size: 13px; color: #f08080;
+  max-width: 520px; margin: 0 auto 14px; display: none;
+}
+
+.result-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 22px; max-width: 520px; margin: 0 auto 16px; display: none; }
+.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.result-label { font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: #C8A44A; font-weight: 600; }
+
+.output-text {
+  background: #111; border: 1px solid #222; border-radius: 8px;
+  padding: 16px; font-size: 15px; line-height: 2; color: #e8e8e8;
+  white-space: pre-wrap; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+.hl { color: #C8A44A; font-weight: 600; }
+
+.btn-copy {
+  background: #222; border: 1px solid #333; border-radius: 7px;
+  color: #aaa; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all .15s;
+}
+.btn-copy:hover { color: #fff; background: #2a2a2a; }
+.btn-copy.copied { background: #152015; border-color: #2e5e2e; color: #5db85d; }
+
+.stats { display: flex; gap: 8px; margin-top: 14px; }
+.sp { flex: 1; background: #111; border: 1px solid #222; border-radius: 8px; padding: 10px; text-align: center; }
+.sp-v { font-size: 17px; font-weight: 700; color: #fff; }
+.sp-l { font-size: 10px; color: #444; margin-top: 2px; letter-spacing: .06em; text-transform: uppercase; }
+.sp.good .sp-v { color: #5db85d; }
+.sp.warn .sp-v { color: #e09040; }
+.sp.bad .sp-v { color: #e06060; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Daily Sales Report</h1>
+  <div class="brand">Good<span>Trip</span></div>
+</div>
+
+<div class="card">
+  <div class="card-title">銷售數字（手動輸入）</div>
+  <div class="field-row">
+    <div class="field">
+      <label>日期</label>
+      <input type="date" id="inp-date" />
+    </div>
+    <div class="field">
+      <label>門市</label>
+      <select id="inp-store">
+        <option>台北店</option>
+        <option>新北店</option>
+        <option>台中店</option>
+        <option>台南店</option>
+        <option>高雄店</option>
+        <option>網路</option>
+      </select>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label>總金額 $</label>
+      <input type="number" id="inp-total" placeholder="28926" />
+    </div>
+    <div class="field">
+      <label>客單數</label>
+      <input type="number" id="inp-orders" placeholder="11" />
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label>現金 $</label>
+      <input type="number" id="inp-cash" placeholder="17976" />
+    </div>
+    <div class="field">
+      <label>刷卡 $</label>
+      <input type="number" id="inp-card" placeholder="10950" />
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">上傳 POS 報表（計算毛利）</div>
+  <div class="drop-zone" id="dz">
+    <input type="file" id="fileInput" accept=".xls,.xlsx" />
+    <div class="dz-icon">📊</div>
+    <div class="dz-text"><strong>點擊選擇</strong>或拖曳報表到這裡</div>
+    <div class="dz-hint">.xls / .xlsx，POS 匯出格式</div>
+  </div>
+</div>
+
+<div class="error-box" id="err"></div>
+<button class="btn-calc" onclick="calc()">計算並產生摘要</button>
+
+<div class="result-card" id="res">
+  <div class="result-header">
+    <span class="result-label">今日銷售摘要</span>
+    <button class="btn-copy" id="btnCopy" onclick="doCopy()">複製</button>
+  </div>
+  <div class="output-text" id="out"></div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<script>
+let file = null;
+
+document.getElementById('fileInput').addEventListener('change', e => load(e.target.files[0]));
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='#C8A44A'; });
+dz.addEventListener('dragleave', () => dz.style.borderColor='');
+dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor=''; load(e.dataTransfer.files[0]); });
+
+function load(f) {
+  if (!f) return;
+  file = f;
+  dz.classList.add('loaded');
+  dz.querySelector('.dz-icon').textContent = '✅';
+  dz.querySelector('.dz-text').innerHTML = '<strong>' + f.name + '</strong>';
+  dz.querySelector('.dz-hint').textContent = (f.size/1024).toFixed(1) + ' KB';
+}
+
+function err(msg) {
+  const b = document.getElementById('err');
+  b.textContent = '⚠️ ' + msg;
+  b.style.display = 'block';
+  setTimeout(() => b.style.display = 'none', 5000);
+}
+
+function fmt(n) { return '$' + Math.round(n).toLocaleString(); }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function calc() {
+  const dateRaw = document.getElementById('inp-date').value;
+  const store  = document.getElementById('inp-store').value;
+  const total  = parseFloat(document.getElementById('inp-total').value);
+  const orders = parseInt(document.getElementById('inp-orders').value);
+  const cash   = parseFloat(document.getElementById('inp-cash').value) || 0;
+  const card   = parseFloat(document.getElementById('inp-card').value) || 0;
+
+  if (!dateRaw)      return err('請選擇日期');
+  if (isNaN(total))  return err('請填寫總金額');
+  if (isNaN(orders)) return err('請填寫客單數');
+  if (!file)         return err('請上傳 POS 報表');
+
+  // 2026-06-17 -> 6月17號
+  const dp = dateRaw.split('-');
+  const date = parseInt(dp[1]) + '月' + parseInt(dp[2]) + '號';
+
+  const aov = Math.round(total / orders);
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      if (!rows.length) return err('報表內沒有資料');
+
+      const s = rows[0];
+      if (!('商品成本' in s) || !('數量' in s) || !('訂單合計' in s) || !('訂單號碼' in s))
+        return err('欄位不符，需含「訂單號碼」「訂單合計」「商品成本」「數量」');
+
+      // 成本：商品成本 × 數量 × 1.25（逐列加總）
+      let totalCost = 0;
+      // 營業額：訂單合計，每張訂單只取一次
+      const orderTotals = {};
+      rows.forEach(r => {
+        if (r['訂單狀態'] && r['訂單狀態'] !== '已完成') return;
+        const cost = (parseFloat(r['商品成本']) || 0) * 1.25;
+        const qty  = parseFloat(r['數量']) || 0;
+        totalCost += cost * qty;
+
+        const oid = r['訂單號碼'];
+        if (oid && !(oid in orderTotals)) {
+          orderTotals[oid] = parseFloat(r['訂單合計']) || 0;
+        }
+      });
+
+      const reportRevenue = Object.values(orderTotals).reduce((a,b) => a+b, 0);
+      const gp = reportRevenue - totalCost;
+      const gpm = reportRevenue > 0 ? gp / reportRevenue * 100 : 0;
+
+      const lines = [
+        date + ' ' + store,
+        '總金額：' + fmt(total),
+        '現金：'   + fmt(cash),
+        '刷卡：'   + fmt(card),
+        '客單數：' + orders,
+        '客單價：' + fmt(aov),
+        '',
+        '毛利額：' + fmt(gp),
+        '毛利率：' + gpm.toFixed(1) + '%',
+      ];
+
+      const plain = lines.join('\n');
+      document.getElementById('out').dataset.plain = plain;
+      document.getElementById('out').innerHTML = lines.map((l,i) =>
+        i >= 7 ? '<span class="hl">' + esc(l) + '</span>' : esc(l)
+      ).join('\n');
+
+      const cls = gpm >= 50 ? 'good' : gpm >= 40 ? '' : gpm >= 30 ? 'warn' : 'bad';
+      document.getElementById('stats').innerHTML = `
+        <div class="sp"><div class="sp-v">${orders}</div><div class="sp-l">客單數</div></div>
+        <div class="sp"><div class="sp-v">${fmt(aov)}</div><div class="sp-l">客單價</div></div>
+        <div class="sp ${cls}"><div class="sp-v">${gpm.toFixed(1)}%</div><div class="sp-l">毛利率</div></div>
+      `;
+
+      document.getElementById('res').style.display = 'block';
+      document.getElementById('res').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch(ex) {
+      err('讀取報表失敗：' + ex.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function doCopy() {
+  const text = document.getElementById('out').dataset.plain || '';
+  const btn = document.getElementById('btnCopy');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已複製 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '複製'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = '已複製 ✓'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '複製'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
